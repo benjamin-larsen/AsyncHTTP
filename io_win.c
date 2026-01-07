@@ -44,6 +44,10 @@ struct io_op *CreateIOOperation(uint32_t type, void *data) {
     return op;
 }
 
+bool ResolveIOOperation(const struct io_handler *ioHandler, const struct io_op *op) {
+    return PostQueuedCompletionStatus(ioHandler->iocp_handle, 0, 0, (OVERLAPPED*)op);
+}
+
 HANDLE w32_CreateIOPort(const struct io_handler *ioHandler, const HANDLE fHandle) {
     return CreateIoCompletionPort(
         fHandle,
