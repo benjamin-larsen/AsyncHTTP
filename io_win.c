@@ -53,17 +53,18 @@ HANDLE w32_CreateIOPort(const struct io_handler *ioHandler, const HANDLE fHandle
     );
 }
 
-void RunIO(const struct io_handler *ioHandler) {
+struct io_op *RunIO(const struct io_handler *ioHandler) {
     if (ioHandler == NULL) {
         // return some error
-        return;
+        return NULL;
     }
 
     if (ioHandler->iocp_handle == NULL) {
         // return some error
-        return;
+        return NULL;
     }
 
+    Attempt:
     DWORD bytesTransferred;
     ULONG_PTR completionKey;
     LPOVERLAPPED overlapped;
@@ -76,10 +77,7 @@ void RunIO(const struct io_handler *ioHandler) {
         INFINITE
     );
 
-    if (!ok || overlapped == NULL) {
-        // do continue
-        return;
-    }
+    if (!ok || overlapped == NULL) goto Attempt;
 
     struct io_op *op = (struct io_op*)overlapped;
 
@@ -88,4 +86,5 @@ void RunIO(const struct io_handler *ioHandler) {
         abort();
     }
 
+    return op;
 }
