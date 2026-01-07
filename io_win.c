@@ -53,13 +53,6 @@ HANDLE w32_CreateIOPort(const struct io_handler *ioHandler, const HANDLE fHandle
     );
 }
 
-void PrintHex(unsigned char *bytes, size_t size) {
-    for (size_t i = 0; i < size; i++) {
-        printf("%02X", bytes[i]);
-    }
-    printf("\n");
-}
-
 void RunIO(const struct io_handler *ioHandler) {
     if (ioHandler == NULL) {
         // return some error
@@ -91,10 +84,8 @@ void RunIO(const struct io_handler *ioHandler) {
     struct io_op *op = (struct io_op*)overlapped;
 
     if (op->magic != IOOperationMagic) {
-        // panic: received overlapped that isn't an io_op.
         fprintf(stderr, "panic: received overlapped from IOCP that isn't a io_op struct.\n");
         abort();
     }
 
-    PrintHex((unsigned char *)op, sizeof(struct io_op));
 }
