@@ -6,5 +6,5 @@ set(CMAKE_C_STANDARD 23)
 add_executable(AsyncHTTP main.c)
 
 if(WIN32)
-    target_link_libraries(HTTPServer PRIVATE ws2_32)
+    target_link_libraries(AsyncHTTP PRIVATE ws2_32)
 endif()
