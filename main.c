@@ -37,7 +37,7 @@ int main(void) {
 
     printf("File Port: %p\n", port);
 
-    struct io_op *op = CreateIOOperation();
+    struct io_op *op = CreateIOOperation(0, NULL);
 
     char data[] = "Hello World!";
 

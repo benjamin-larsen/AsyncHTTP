@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
-// "WINAsync" in hex
-#define IOOperationMagic 0x57494e4173796e63
+// "WIOP" (Windows Operation) in hex
+#define IOOperationMagic 0x57494f50
 
 struct io_handler {
     HANDLE iocp_handle;
@@ -11,7 +11,9 @@ struct io_handler {
 
 struct io_op {
     OVERLAPPED overlapped;
-    uint64_t magic;
+    uint32_t magic;
+    uint32_t type;
+    void *data;
 };
 
 struct io_handler CreateIOHandler() {
@@ -33,18 +35,11 @@ bool IsValidIOHandler(const struct io_handler *ioHandler) {
     return ioHandler->iocp_handle != NULL;
 }
 
-/*
-const HANDLE handle = CreateIoCompletionPort(
-        fHandle,
-        ioHandler->iocp_handle,
-        0,
-        0
-    );
-*/
-
-struct io_op *CreateIOOperation() {
+struct io_op *CreateIOOperation(uint32_t type, void *data) {
     struct io_op *op = calloc(1, sizeof(struct io_op));
     op->magic = IOOperationMagic;
+    op->type = type;
+    op->data = data;
 
     return op;
 }
