@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdatomic.h>
 
+typedef void (*shared_destructor)(void *);
 typedef _Atomic uint32_t atomic_uint32;
 
 atomic_uint32 sharedPtrMagicCounter = SHARED_PTR_MAGIC;
@@ -18,6 +19,7 @@ atomic_uint32 sharedPtrMagicCounter = SHARED_PTR_MAGIC;
 struct shared_ptr {
     atomic_uint32 refs;
     uint32_t magic;
+    shared_destructor destructor;
     void *ptr;
 };
 
@@ -29,6 +31,7 @@ struct shared_retainer {
 
 const struct shared_retainer INVALID_RETAINER = {
     .descriptor = NULL,
+    .magic = 0,
     .released = true
 };
 
@@ -63,6 +66,28 @@ struct shared_retainer RetainShared(struct shared_retainer retainer) {
     };
 }
 
+struct shared_retainer TransferOwnershipShared(struct shared_retainer *retainer) {
+    if (retainer == NULL) {
+        fprintf(stderr, "panic: attempted to call ReleaseShared on NULL retainer.\n");
+        abort();
+    }
+
+    if (retainer->released || retainer->descriptor == NULL) {
+        return INVALID_RETAINER;
+    }
+
+    struct shared_retainer transferredRetainer = {
+        .descriptor = retainer->descriptor,
+        .magic = retainer->magic,
+        .released = false
+    };
+
+    retainer->descriptor = NULL;
+    retainer->released = true;
+
+    return transferredRetainer;
+}
+
 void ReleaseShared(struct shared_retainer *retainer) {
     if (retainer == NULL) {
         fprintf(stderr, "panic: attempted to call ReleaseShared on NULL retainer.\n");
@@ -94,13 +119,17 @@ void ReleaseShared(struct shared_retainer *retainer) {
 
     if (oldRefs > 1) return;
 
+    if (descriptor->destructor != NULL) {
+        descriptor->destructor(descriptor->ptr);
+    }
+
     descriptor->magic = 0;
     descriptor->ptr = NULL;
 
     free(descriptor);
 }
 
-struct shared_retainer MakeShared(size_t size) {
+struct shared_retainer MakeShared(size_t size, shared_destructor destructor) {
     struct shared_ptr *sharedPtr = calloc(1, sizeof(struct shared_ptr) + size);
 
     if (sharedPtr == NULL) {
@@ -109,6 +138,7 @@ struct shared_retainer MakeShared(size_t size) {
 
     sharedPtr->refs = 1;
     sharedPtr->magic = atomic_fetch_add(&sharedPtrMagicCounter, 1);
+    sharedPtr->destructor = destructor;
 
     // We do + 1 as Pointer Arithmetic advances per the size of the Pointer Type (in this case shared_ptr)
     // As we want the data after the shared pointer header
@@ -116,6 +146,22 @@ struct shared_retainer MakeShared(size_t size) {
 
     //printf("%p\n", sharedPtr);
     //printf("%llu\n", *(uintptr_t*)sharedPtr->ptr);
+
+    return (struct shared_retainer){
+        .descriptor = sharedPtr,
+        .magic = sharedPtr->magic,
+        .released = false
+    };
+}
+
+// Only use these APIs if you know what you're doing
+
+// Used for when you want to make a Retainer from a Pointer, without incrementing refs
+// This would be used for example when the Caller Thread incremented refs for you, but passes you the shared pointer only.
+struct shared_retainer RetainerFromShared(struct shared_ptr *sharedPtr) {
+    if (sharedPtr == NULL) {
+        return INVALID_RETAINER;
+    }
 
     return (struct shared_retainer){
         .descriptor = sharedPtr,
