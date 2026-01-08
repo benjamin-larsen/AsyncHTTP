@@ -1,28 +1,127 @@
-﻿/* Option A - Descriptor Table
-A Global Descriptor Table (hereinafter referred to as the GDT, not to be confused with the GDT from x86), that will never go out of scope, and is thread-safe.
-Each Shared Pointer has a Descriptor ID, the Descriptor ID to a Descriptor is mapped in the GDT.
+﻿#ifndef ASYNCHTTP_SHAREDPTR_H
+#define ASYNCHTTP_SHAREDPTR_H
 
-Descriptor shall contain the underlying_pointer and atomic int for weak and strong references.
+// Randomly Generated Magic
+#define SHARED_PTR_MAGIC 0xa5f47ae3
 
-To obtain/retain a shared pointer:
-Atomic Start:
-- Obtain Descriptor from GDT
-- Increment Strong/Weak Counter
-Atomic End:
-- Fail to retain if Descriptor not Found
-*/
+#include <stdio.h>
 
-/* Option B
-Constraint: assumes careful and proper usage
-Must not try to retain or release an already freed Shared Pointer,
-as that would mean the Descriptor would be freed and therefore Undefined Behavior.
+#include <string.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdatomic.h>
 
-It would be good practice to retain on every function that is called,
-unless its absolutely expected that an ancestor function will never try to release the Pointer before the function that needs it is done using it.
+typedef _Atomic uint32_t atomic_uint32;
 
-For thread-safe ownership change, the Calling Thread must increment the strong_count on the Callee Thread's behalf,
-it is then the Callee's responsibility to release (decrement the Shared Pointer).
+atomic_uint32 sharedPtrMagicCounter = SHARED_PTR_MAGIC;
 
-The reason we must do this is that it is possible that in between the Thread being called/spawned and the Thread actually executing,
-that the pointer may be freed.
-*/
+struct shared_ptr {
+    atomic_uint32 refs;
+    uint32_t magic;
+    void *ptr;
+};
+
+struct shared_retainer {
+    struct shared_ptr *descriptor;
+    uint32_t magic;
+    bool released;
+};
+
+const struct shared_retainer INVALID_RETAINER = {
+    .descriptor = NULL,
+    .released = true
+};
+
+// Does extra check if released or not.
+struct shared_retainer RetainShared(struct shared_retainer retainer) {
+    if (retainer.released || retainer.descriptor == NULL) {
+        return INVALID_RETAINER;
+    }
+
+    // must be volatile to prevent compiler from optimizing by for example trying to copy the struct.
+    // the descriptor may be modified by another thread
+    volatile struct shared_ptr *descriptor = retainer.descriptor;
+
+    uint32_t oldRefs = atomic_fetch_add(&descriptor->refs, 1);
+
+    if (oldRefs == 0) {
+        fprintf(stderr, "panic: Shared Pointer attempted to be retained after being reference by none.\n");
+        abort();
+    }
+
+    // Must check magic after, since it's possible that another thread set refs to 0.
+    // Must secure refs before doing this sanity check.
+    if (descriptor->magic != retainer.magic) {
+        fprintf(stderr, "panic: Shared Pointer attempted to be retained after being freed or corrupted.\n");
+        abort();
+    }
+
+    return (struct shared_retainer){
+        .descriptor = descriptor,
+        .magic = retainer.magic,
+        .released = false
+    };
+}
+
+void ReleaseShared(struct shared_retainer *retainer) {
+    if (retainer == NULL) {
+        fprintf(stderr, "panic: attempted to call ReleaseShared on NULL retainer.\n");
+        abort();
+    }
+
+    if (retainer->released || retainer->descriptor == NULL) {
+        return;
+    }
+
+    // must be volatile to prevent compiler from optimizing by for example trying to copy the struct.
+    // the descriptor may be modified by another thread
+    volatile struct shared_ptr *descriptor = retainer->descriptor;
+
+    uint32_t oldRefs = atomic_fetch_sub(&descriptor->refs, 1);
+
+    if (oldRefs == 0) {
+        fprintf(stderr, "panic: Shared Pointer attempted to be released after being reference by none.\n");
+        abort();
+    }
+
+    if (descriptor->magic != retainer->magic) {
+        fprintf(stderr, "panic: Shared Pointer attempted to be released after being freed or corrupted.\n");
+        abort();
+    }
+
+    retainer->descriptor = NULL;
+    retainer->released = true;
+
+    if (oldRefs > 1) return;
+
+    descriptor->magic = 0;
+    descriptor->ptr = NULL;
+
+    free(descriptor);
+}
+
+struct shared_retainer MakeShared(size_t size) {
+    struct shared_ptr *sharedPtr = calloc(1, sizeof(struct shared_ptr) + size);
+
+    if (sharedPtr == NULL) {
+        return INVALID_RETAINER;
+    }
+
+    sharedPtr->refs = 1;
+    sharedPtr->magic = atomic_fetch_add(&sharedPtrMagicCounter, 1);
+
+    // We do + 1 as Pointer Arithmetic advances per the size of the Pointer Type (in this case shared_ptr)
+    // As we want the data after the shared pointer header
+    sharedPtr->ptr = sharedPtr + 1;
+
+    //printf("%p\n", sharedPtr);
+    //printf("%llu\n", *(uintptr_t*)sharedPtr->ptr);
+
+    return (struct shared_retainer){
+        .descriptor = sharedPtr,
+        .magic = sharedPtr->magic,
+        .released = false
+    };
+}
+
+#endif
