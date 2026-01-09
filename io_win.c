@@ -9,11 +9,18 @@ struct io_handler {
     HANDLE iocp_handle;
 };
 
+// TODO: Make Global, not OS-specific
+union op_data {
+    void *ptr;
+    uint32_t u32;
+    uint64_t u64;
+};
+
 struct io_op {
     OVERLAPPED overlapped;
     uint32_t magic;
     uint32_t type;
-    void *data;
+    union op_data data;
 };
 
 struct io_handler CreateIOHandler() {
@@ -35,7 +42,7 @@ bool IsValidIOHandler(const struct io_handler *ioHandler) {
     return ioHandler->iocp_handle != NULL;
 }
 
-struct io_op *CreateIOOperation(uint32_t type, void *data) {
+struct io_op *CreateIOOperation(uint32_t type, union op_data data) {
     struct io_op *op = calloc(1, sizeof(struct io_op));
     op->magic = IOOperationMagic;
     op->type = type;
@@ -57,7 +64,7 @@ HANDLE w32_CreateIOPort(const struct io_handler *ioHandler, const HANDLE fHandle
     );
 }
 
-struct io_op *RunIO(const struct io_handler *ioHandler) {
+struct io_op *RunIO(const struct io_handler *ioHandler, bool *okOut, DWORD *bytesTransferred) {
     if (ioHandler == NULL) {
         // return some error
         return NULL;
@@ -68,20 +75,23 @@ struct io_op *RunIO(const struct io_handler *ioHandler) {
         return NULL;
     }
 
+    if (okOut == NULL || bytesTransferred == NULL) {
+        return NULL;
+    }
+
     Attempt:
-    DWORD bytesTransferred;
     ULONG_PTR completionKey;
     LPOVERLAPPED overlapped;
 
-    bool ok = GetQueuedCompletionStatus(
+    *okOut = GetQueuedCompletionStatus(
         ioHandler->iocp_handle,
-        &bytesTransferred,
+        bytesTransferred,
         &completionKey,
         &overlapped,
         INFINITE
     );
 
-    if (!ok || overlapped == NULL) goto Attempt;
+    if (overlapped == NULL) goto Attempt;
 
     struct io_op *op = (struct io_op*)overlapped;
 
