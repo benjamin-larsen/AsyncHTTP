@@ -1,11 +1,17 @@
-﻿#include <stdatomic.h>
+﻿#pragma once
+
+// Globals
+#include <stdatomic.h>
 #include <winsock2.h>
 #include <stdio.h>
-#include "./io.h"
 
-#define IO_STARTCLIENT 0
-#define IO_READ        1
-#define IO_WRITE       2
+// Local External
+#include "../safe_pointer.c"
+#include "../io.h"
+
+// // Local Internal
+#include "./event_loop.c"
+#include "./consts.h"
 
 #define WSA_UNINITIALIZED 0
 #define WSA_STARTING      1
@@ -13,6 +19,10 @@
 
 WSADATA wsaData;
 atomic_int WSASetupPhase = WSA_UNINITIALIZED;
+
+// We pass in SOCKET cast as a void *ptr, currently SOCKET is a UINT_PTR, but incase Microsoft ever decides to change that we must have this.
+static_assert(sizeof(void *) == sizeof(SOCKET),
+    "SOCKET is not the size of Pointer. Contact Developer (benjamin-larsen) for patch.");
 
 void InitWSA() {
     int prevState = WSA_UNINITIALIZED;
@@ -37,33 +47,6 @@ void InitWSA() {
     atomic_store(&WSASetupPhase, WSA_INITIALIZED);
 }
 
-DWORD StartWorker(void *param) {
-    struct io_handler *ioHandler = param;
-    for (;;) {
-        struct io_op *op = RunIO(ioHandler);
-        printf("OP Type: %u\n", op->type);
-        free(op);
-    }
-
-    return 0;
-}
-
-void SpawnWorker(const struct io_handler *ioHandler) {
-    HANDLE thread = CreateThread(
-        NULL,
-        0,
-        StartWorker,
-        ioHandler,
-        0,
-        NULL
-    );
-
-    if (thread == NULL) {
-        fprintf(stderr, "panic: CreateThread failed: %lu\n", GetLastError());
-        abort();
-    }
-}
-
 DWORD CountLogicalProcessors() {
     SYSTEM_INFO sysInfo;
     GetSystemInfo(&sysInfo);
@@ -74,10 +57,18 @@ DWORD CountLogicalProcessors() {
 void StartServer(const char *addr, uint16_t port) {
     InitWSA();
 
-    struct io_handler ioHandler = CreateIOHandler();
+    __attribute__((__cleanup__(ReleaseShared))) struct shared_retainer ioHandler_retainer = MakeShared(sizeof(struct io_handler), NULL);
+    struct io_handler *ioHandler = ioHandler_retainer.descriptor->ptr;
+
+    *ioHandler = CreateIOHandler();
 
     for (int i = 0; i < CountLogicalProcessors(); i++) {
-        SpawnWorker(&ioHandler);
+        if (RetainShared(ioHandler_retainer).descriptor == NULL) {
+            fprintf(stderr, "panic: Error retaining IO Handler for thread.\n");
+            abort();
+        }
+
+        SpawnWorker(ioHandler_retainer.descriptor);
     }
 
     SOCKET serverSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -92,6 +83,14 @@ void StartServer(const char *addr, uint16_t port) {
 
     if (err == SOCKET_ERROR) {
         fprintf(stderr, "panic: Server Socket setoption (Reuse Address) failed: %i\n", WSAGetLastError());
+        abort();
+    }
+
+    bool dontLinger = true;
+    err = setsockopt(serverSock, SOL_SOCKET, SO_DONTLINGER, (char *)&dontLinger, sizeof(dontLinger));
+
+    if (err == SOCKET_ERROR) {
+        fprintf(stderr, "panic: Server Socket setoption (Don't Linger / Non-Blocking Close) failed: %i\n", WSAGetLastError());
         abort();
     }
 
@@ -126,9 +125,9 @@ void StartServer(const char *addr, uint16_t port) {
             continue;
         }
 
-        printf("Client connect\n");
-
-        struct io_op *op = CreateIOOperation(IO_STARTCLIENT, NULL);
-        ResolveIOOperation(&ioHandler, op);
+        struct io_op *op = CreateIOOperation(IO_STARTCLIENT, (union op_data){
+            .ptr = (void *)client
+        });
+        ResolveIOOperation(ioHandler, op);
     }
 }
