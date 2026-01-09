@@ -17,7 +17,7 @@ void HandleTCP_OP(const struct io_handler *ioHandler, const struct io_op op, DWO
         case IO_STARTCLIENT:
             return StartClient(ioHandler, (SOCKET)op.data.ptr);
         case IO_READ:
-            return ProcessRead(op.data.ptr, op, bytesTransferred);
+            return ProcessRead(op, bytesTransferred);
         default:
             printf("error: Unknown Operation Type %i (processor)\n", op.type);
     }

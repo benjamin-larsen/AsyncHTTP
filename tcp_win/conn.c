@@ -11,21 +11,39 @@
 // Local Internal
 #include "./consts.h"
 
+#define RECV_LEN 1024
+
+// constraint: a tcpConn shall only have one ongoing async I/O at once, as I/O operations rely on the conn structure
+// like for example for receive buffer
 struct tcpConn {
     SOCKET sock;
-    WSABUF testBuf;
+    unsigned char *recvBuf;
+    uint32_t recvOffset;
+    WSABUF WSArecvBuf;
     DWORD flags;
 };
 
 void QueueRead(struct shared_retainer connOPRetainer) {
     struct shared_ptr *sharedConn = connOPRetainer.descriptor;
-    struct io_op *op = CreateIOOperation(IO_READ, (union op_data){ .ptr = sharedConn });
-
     struct tcpConn* conn = sharedConn->ptr;
+
+    if (conn->recvOffset >= RECV_LEN) {
+        printf("Receive Buffer went to max\n");
+        ReleaseShared(&connOPRetainer);
+        return;
+    }
+
+    // ReleaseShared(&connOPRetainer);
+    conn->WSArecvBuf = (WSABUF){
+        .len = RECV_LEN - conn->recvOffset,
+        .buf = conn->recvBuf + conn->recvOffset,
+    };
+
+    struct io_op *op = CreateIOOperation(IO_READ, (union op_data){ .ptr = sharedConn });
 
     int err = WSARecv(
         conn->sock,
-        &conn->testBuf,
+        &conn->WSArecvBuf,
         1,
         NULL,
         &conn->flags,
@@ -39,12 +57,56 @@ void QueueRead(struct shared_retainer connOPRetainer) {
         if (wsaErr != WSA_IO_PENDING) {
             printf("Instant Read Error: %i\n", wsaErr);
             ReleaseShared(&connOPRetainer);
+            free(op);
         }
     }
 }
 
-void ProcessRead(struct tcpConn* conn, const struct io_op op, DWORD bytesTransferred) {
+struct tcpString {
+    unsigned char *buf;
+    uint32_t len;
+};
+
+const struct tcpString nullString = { .buf = NULL, .len = 0 };
+
+struct tcpString GetLine(struct tcpConn* conn, uint32_t offset) {
+    if (offset >= conn->recvOffset) return nullString;
+
+    unsigned char *buf = (unsigned char*)conn->recvBuf + offset;
+    unsigned char *bounds = memchr(buf, '\n', conn->recvOffset - offset);
+
+    if (bounds == NULL || bounds < buf) return nullString;
+
+    uint32_t size = (char*)bounds - (char*)buf;
+
+    return (struct tcpString){ .buf = buf, .len = size };
+}
+
+void ProcessLines(struct tcpConn* conn) {
+    struct tcpString line;
+    uint32_t offset = 0;
+
+    while ((line = GetLine(conn, offset)).buf != NULL) {
+        printf("Line: %.*s\n", line.len, line.buf);
+        offset += line.len + 1;
+    }
+
+    uint32_t remaining = conn->recvOffset - offset;
+
+    if (remaining == 0) {
+        conn->recvOffset = 0;
+        return;
+    }
+
+    printf("Remaining: %u\n", remaining);
+
+    memmove(conn->recvBuf, (unsigned char *)conn->recvBuf + offset, remaining);
+    conn->recvOffset = remaining;
+}
+
+void ProcessRead(const struct io_op op, DWORD bytesTransferred) {
     __attribute__((__cleanup__(ReleaseShared))) struct shared_retainer connRetainer = RetainerFromShared(op.data.ptr);
+    struct tcpConn* conn = connRetainer.descriptor->ptr;
 
     if (bytesTransferred == 0) return;
 
@@ -55,13 +117,16 @@ void ProcessRead(struct tcpConn* conn, const struct io_op op, DWORD bytesTransfe
         return;
     }
 
+    conn->recvOffset += bytesTransferred;
+    ProcessLines(conn);
+
     QueueRead(connOPRetainer);
 }
 
 void CloseConn(struct tcpConn* conn) {
-    printf("Flags: %lu, Closing buf: %p\n", conn->flags, conn->testBuf.buf);
+    printf("Flags: %lu, Closing buf: %p\n", conn->flags, conn->recvBuf);
     closesocket(conn->sock);
-    free(conn->testBuf.buf);
+    free(conn->recvBuf);
     // should prob cancel or use shared_ptr just incase we got queued using the conn pointer
 }
 
@@ -90,11 +155,8 @@ void StartClient(const struct io_handler *ioHandler, SOCKET sock) {
     __attribute__((__cleanup__(ReleaseShared))) struct shared_retainer connRetainer = MakeShared(sizeof(struct tcpConn), CleanupConn);
     struct tcpConn* conn = connRetainer.descriptor->ptr;
     conn->sock = sock;
-    char *underlyingTestBuf = calloc(50, sizeof(char));
-    conn->testBuf = (WSABUF){
-        .len = 50,
-        .buf = underlyingTestBuf
-    };
+    conn->recvBuf = calloc(RECV_LEN, sizeof(char));
+    conn->recvOffset = 0;
     conn->flags = 0;
 
     struct shared_retainer connOPRetainer = RetainShared(connRetainer);
