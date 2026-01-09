@@ -1,5 +1,4 @@
-﻿#ifndef ASYNCHTTP_SHAREDPTR_H
-#define ASYNCHTTP_SHAREDPTR_H
+﻿#pragma once
 
 // Randomly Generated Magic
 #define SHARED_PTR_MAGIC 0xa5f47ae3
@@ -169,5 +168,3 @@ struct shared_retainer RetainerFromShared(struct shared_ptr *sharedPtr) {
         .released = false
     };
 }
-
-#endif
