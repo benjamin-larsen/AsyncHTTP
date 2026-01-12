@@ -83,6 +83,19 @@ void ProcessRead(const struct io_op op, DWORD bytesTransferred) {
     QueueRead(connOPRetainer);
 }
 
+void ProcessWrite(const struct io_op op, DWORD bytesTransferred) {
+    __attribute__((__cleanup__(ReleaseShared))) struct shared_retainer connRetainer = RetainerFromShared(op.data.ptr);
+    struct tcpConn* conn = connRetainer.ptr;
+
+    if (bytesTransferred == 0) return;
+
+    struct shared_retainer connOPRetainer = RetainShared(connRetainer);
+
+    if (connOPRetainer.ptr == NULL) {
+        fprintf(stderr, "error: Failed to retain connection pointer.\n");
+        return;
+    }
+
     QueueRead(connOPRetainer);
 }
 

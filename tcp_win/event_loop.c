@@ -18,6 +18,8 @@ void HandleTCP_OP(const struct io_handler *ioHandler, const struct io_op op, DWO
             return StartClient(ioHandler, (SOCKET)op.data.ptr);
         case IO_READ:
             return ProcessRead(op, bytesTransferred);
+        case IO_WRITE:
+            return ProcessWrite(op, bytesTransferred);
         default:
             printf("error: Unknown Operation Type %i (processor)\n", op.type);
     }
@@ -25,7 +27,8 @@ void HandleTCP_OP(const struct io_handler *ioHandler, const struct io_op op, DWO
 
 void HandleTCP_OPErr(const struct io_handler *ioHandler, const struct io_op op) {
     switch (op.type) {
-        case IO_READ: {
+        case IO_READ:
+        case IO_WRITE: {
             struct shared_retainer retainer = RetainerFromShared(op.data.ptr);
             ReleaseShared(&retainer);
             return;
