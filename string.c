@@ -57,6 +57,7 @@ void FreeString(union string *str) {
     if (str->longStr.buf == nullptr) return;
 
     free(str->longStr.buf);
+    str->longStr.buf = nullptr;
 }
 
 bool StringEquals(union string strA, union string strB) {
@@ -69,6 +70,40 @@ bool StringEquals(union string strA, union string strB) {
     if (lenA !=  lenB) return false;
 
     return memcmp(bufA, bufB, lenA) == 0;
+}
+
+union string CopyString(union string str) {
+    uint8_t *buf = GetStringBuf(&str);
+    uint32_t len = GetStringLen(&str);
+
+    if (len == 0) return nullString;
+
+    if (len > maxShortString) {
+        // should check if buf is null
+        struct longString longStr = { .len = len, .buf = malloc(len) };
+        if (longStr.buf == NULL) return nullString;
+
+        memcpy(longStr.buf, buf, len);
+
+        return (union string){ .longStr = longStr };
+    } else {
+        struct shortString shortStr = { .len = len };
+        memcpy(shortStr.buf, buf, len);
+
+        return (union string){ .shortStr = shortStr };
+    }
+}
+
+union string FromCStrUnsafe(const char *str) {
+    size_t len = strlen(str);
+
+    if (len == 0) return nullString;
+
+    return (union string){ .longStr = { .len = len, .buf = str } };
+}
+
+union string FromCStr(const char *str) {
+    return CopyString(FromCStrUnsafe(str));
 }
 
 // Splits the string from source (leaving the first part in the dest) and puts remainder into src
