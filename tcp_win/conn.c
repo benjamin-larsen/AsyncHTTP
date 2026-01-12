@@ -24,8 +24,7 @@ struct tcpConn {
 };
 
 void QueueRead(struct shared_retainer connOPRetainer) {
-    struct shared_ptr *sharedConn = connOPRetainer.descriptor;
-    struct tcpConn* conn = sharedConn->ptr;
+    struct tcpConn* conn = connOPRetainer.ptr;
 
     if (conn->recvOffset >= RECV_LEN) {
         printf("Receive Buffer went to max\n");
@@ -33,13 +32,12 @@ void QueueRead(struct shared_retainer connOPRetainer) {
         return;
     }
 
-    // ReleaseShared(&connOPRetainer);
     conn->WSArecvBuf = (WSABUF){
         .len = RECV_LEN - conn->recvOffset,
-        .buf = conn->recvBuf + conn->recvOffset,
+        .buf = (unsigned char *)conn->recvBuf + conn->recvOffset,
     };
 
-    struct io_op *op = CreateIOOperation(IO_READ, (union op_data){ .ptr = sharedConn });
+    struct io_op *op = CreateIOOperation(IO_READ, (union op_data){ .ptr = SharedFromRetainer(connOPRetainer) });
 
     int err = WSARecv(
         conn->sock,
@@ -106,25 +104,24 @@ void ProcessLines(struct tcpConn* conn) {
 
 void ProcessRead(const struct io_op op, DWORD bytesTransferred) {
     __attribute__((__cleanup__(ReleaseShared))) struct shared_retainer connRetainer = RetainerFromShared(op.data.ptr);
-    struct tcpConn* conn = connRetainer.descriptor->ptr;
+    struct tcpConn* conn = connRetainer.ptr;
 
     if (bytesTransferred == 0) return;
 
     struct shared_retainer connOPRetainer = RetainShared(connRetainer);
 
-    if (connOPRetainer.descriptor == NULL) {
+    if (connOPRetainer.ptr == NULL) {
         fprintf(stderr, "error: Failed to retain connection pointer.\n");
         return;
     }
 
-    conn->recvOffset += bytesTransferred;
     ProcessLines(conn);
+    conn->recvOffset += bytesTransferred;
 
     QueueRead(connOPRetainer);
 }
 
 void CloseConn(struct tcpConn* conn) {
-    printf("Flags: %lu, Closing buf: %p\n", conn->flags, conn->recvBuf);
     closesocket(conn->sock);
     free(conn->recvBuf);
     // should prob cancel or use shared_ptr just incase we got queued using the conn pointer
@@ -153,7 +150,7 @@ void StartClient(const struct io_handler *ioHandler, SOCKET sock) {
     }
 
     __attribute__((__cleanup__(ReleaseShared))) struct shared_retainer connRetainer = MakeShared(sizeof(struct tcpConn), CleanupConn);
-    struct tcpConn* conn = connRetainer.descriptor->ptr;
+    struct tcpConn* conn = connRetainer.ptr;
     conn->sock = sock;
     conn->recvBuf = calloc(RECV_LEN, sizeof(char));
     conn->recvOffset = 0;
@@ -161,7 +158,7 @@ void StartClient(const struct io_handler *ioHandler, SOCKET sock) {
 
     struct shared_retainer connOPRetainer = RetainShared(connRetainer);
 
-    if (connOPRetainer.descriptor == NULL) {
+    if (connOPRetainer.ptr == NULL) {
         fprintf(stderr, "error: Failed to retain connection pointer.\n");
         return;
     }

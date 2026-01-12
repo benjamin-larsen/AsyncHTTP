@@ -57,18 +57,18 @@ DWORD CountLogicalProcessors() {
 void StartServer(const char *addr, uint16_t port) {
     InitWSA();
 
-    struct io_handler *ioHandler = ioHandler_retainer.descriptor->ptr;
     __attribute__((__cleanup__(ReleaseShared))) struct shared_retainer ioHandler_retainer = MakeShared(sizeof(struct io_handler), CleanupIOHandler);
+    struct io_handler *ioHandler = ioHandler_retainer.ptr;
 
     *ioHandler = CreateIOHandler();
 
     for (int i = 0; i < CountLogicalProcessors(); i++) {
-        if (RetainShared(ioHandler_retainer).descriptor == NULL) {
+        if (RetainShared(ioHandler_retainer).ptr == NULL) {
             fprintf(stderr, "panic: Error retaining IO Handler for thread.\n");
             abort();
         }
 
-        SpawnWorker(ioHandler_retainer.descriptor);
+        SpawnWorker(SharedFromRetainer(ioHandler_retainer));
     }
 
     SOCKET serverSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);

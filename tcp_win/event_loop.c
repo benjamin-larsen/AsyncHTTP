@@ -39,12 +39,12 @@ DWORD StartWorker(void *param) {
     struct shared_ptr *ptr = param;
     __attribute__((__cleanup__(ReleaseShared))) struct shared_retainer ioHandler_retainer = RetainerFromShared(ptr);
 
-    if (ioHandler_retainer.descriptor == NULL) {
+    if (ioHandler_retainer.ptr == NULL) {
         fprintf(stderr, "panic: Error restoring retainer IO Handler for thread.\n");
         abort();
     }
 
-    struct io_handler *ioHandler = ioHandler_retainer.descriptor->ptr;
+    struct io_handler *ioHandler = ioHandler_retainer.ptr;
 
     for (;;) {
         bool ok;
