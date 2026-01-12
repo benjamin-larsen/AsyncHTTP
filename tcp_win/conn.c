@@ -34,7 +34,7 @@ void QueueRead(struct shared_retainer connOPRetainer) {
 
     conn->WSArecvBuf = (WSABUF){
         .len = RECV_LEN - conn->common.recvOffset,
-        .buf = (unsigned char *)conn->common.recvBuf + conn->common.recvOffset,
+        .buf = (uint8_t *)conn->common.recvBuf + conn->common.recvOffset,
     };
 
     struct io_op *op = CreateIOOperation(IO_READ, (union op_data){ .ptr = SharedFromRetainer(connOPRetainer) });

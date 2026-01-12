@@ -7,14 +7,14 @@
 struct longString {
     uint8_t reserved;
     uint32_t len;
-    unsigned char *buf;
+    uint8_t *buf;
 };
 
 #define maxShortString sizeof(struct longString) - sizeof(uint8_t)
 
 struct __attribute__((packed)) shortString {
     uint8_t len;
-    unsigned char buf[maxShortString];
+    uint8_t buf[maxShortString];
 };
 
 union string {
@@ -25,7 +25,7 @@ union string {
 static_assert(sizeof(struct shortString) == sizeof(struct longString),
     "Short String is not the size of Regular String. Contact Developer (benjamin-larsen) for patch.");
 
-unsigned char *GetStringBuf(union string *str) {
+uint8_t *GetStringBuf(union string *str) {
     if (str == nullptr) return nullptr;
     
     if (str->shortStr.len > 0) {
@@ -117,11 +117,11 @@ bool SplitString(union string *src, union string *dest, uint8_t delimiter) {
 
     if (buf == NULL || len == 0) return false;
 
-    unsigned char *bounds = memchr(buf, delimiter, len);
+    uint8_t *bounds = memchr(buf, delimiter, len);
 
     if (bounds == NULL || bounds < buf) return false;
 
-    uint32_t size = (char*)bounds - (char*)buf;
+    uint32_t size = (uint8_t*)bounds - (uint8_t*)buf;
 
     if (src->shortStr.len > 0) {
         struct shortString destStr = { .len = size };

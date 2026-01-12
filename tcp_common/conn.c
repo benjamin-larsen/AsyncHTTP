@@ -126,7 +126,7 @@ bool ProcessLines(struct tcpConnCommon* conn) {
         return true;
     }
 
-    memmove(conn->recvBuf, (unsigned char *)conn->recvBuf + offset, remaining);
+    memmove(conn->recvBuf, (uint8_t *)conn->recvBuf + offset, remaining);
     conn->recvOffset = remaining;
 
     return true;
