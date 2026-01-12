@@ -29,6 +29,7 @@ void InitWSA() {
     if (!atomic_compare_exchange_weak(&WSASetupPhase, &prevState, WSA_STARTING) || prevState != WSA_UNINITIALIZED) {
         // spinlock until the thread that is initializing WSA is finished.
         while (prevState == WSA_STARTING) {
+            _mm_pause();
             prevState = atomic_load(&WSASetupPhase);
         }
         return;
