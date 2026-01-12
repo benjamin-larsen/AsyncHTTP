@@ -1,6 +1,7 @@
 ﻿#include <windows.h>
 #include <stdio.h>
 #include <stdint.h>
+#include "./atomics.c"
 
 // "WIOP" (Windows Operation) in hex
 #define IOOperationMagic 0x57494f50
@@ -8,6 +9,17 @@
 struct io_handler {
     HANDLE iocp_handle;
 };
+
+void CloseIOHandler(struct io_handler *ioHandler) {
+    if (ioHandler == NULL) return;
+
+    CloseHandle(ioHandler->iocp_handle);
+    ioHandler->iocp_handle = NULL;
+}
+
+void CleanupIOHandler(void *ioHandler) {
+    CloseIOHandler(ioHandler);
+}
 
 // TODO: Make Global, not OS-specific
 union op_data {
@@ -64,18 +76,23 @@ HANDLE w32_CreateIOPort(const struct io_handler *ioHandler, const HANDLE fHandle
     );
 }
 
-struct io_op *RunIO(const struct io_handler *ioHandler, bool *okOut, DWORD *bytesTransferred) {
+#define IO_ERR_NULL_HANDLER 0
+#define IO_ERR_NULL_OUTPUT 1
+#define IO_ERR_CLOSED 2
+
+struct io_op *RunIO(const struct io_handler *ioHandler, bool *okOut, DWORD *bytesTransferred, uint32_t *error) {
     if (ioHandler == NULL) {
-        // return some error
+        if (error != NULL) *error = IO_ERR_NULL_HANDLER;
         return NULL;
     }
 
     if (ioHandler->iocp_handle == NULL) {
-        // return some error
+        if (error != NULL) *error = IO_ERR_CLOSED;
         return NULL;
     }
 
     if (okOut == NULL || bytesTransferred == NULL) {
+        if (error != NULL) *error = IO_ERR_CLOSED;
         return NULL;
     }
 
@@ -83,7 +100,7 @@ struct io_op *RunIO(const struct io_handler *ioHandler, bool *okOut, DWORD *byte
     ULONG_PTR completionKey;
     LPOVERLAPPED overlapped;
 
-    *okOut = GetQueuedCompletionStatus(
+    bool ok = GetQueuedCompletionStatus(
         ioHandler->iocp_handle,
         bytesTransferred,
         &completionKey,
@@ -91,7 +108,17 @@ struct io_op *RunIO(const struct io_handler *ioHandler, bool *okOut, DWORD *byte
         INFINITE
     );
 
-    if (overlapped == NULL) goto Attempt;
+    *okOut = ok;
+
+    if (overlapped == NULL) {
+        DWORD winErr = GetLastError();
+        if (ok == false && (winErr == ERROR_ABANDONED_WAIT_0 || winErr == ERROR_INVALID_HANDLE)) {
+            if (error != NULL) *error = IO_ERR_CLOSED;
+            return NULL;
+        }
+
+        goto Attempt;
+    }
 
     struct io_op *op = (struct io_op*)overlapped;
 

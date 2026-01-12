@@ -49,14 +49,18 @@ DWORD StartWorker(void *param) {
     for (;;) {
         bool ok;
         DWORD bytesTransferred;
-        struct io_op *op = RunIO(ioHandler, &ok, &bytesTransferred);
+        uint32_t err;
+        struct io_op *op = RunIO(ioHandler, &ok, &bytesTransferred, &err);
 
         if (op == NULL) {
-            fprintf(stderr, "panic: RunIO failed\n");
+            if (err == IO_ERR_CLOSED) {
+                printf("RunIO finished\n");
+                return 0;
+            }
+
+            fprintf(stderr, "panic: RunIO failed: %u\n", err);
             abort();
         }
-
-        printf("OK: %u, %i, %lu\nBytes Read: %lu\nOP Type: %u\nData:\n  void *ptr: %p\n  uint32_t u32: %u\n  uint64_t u64: %llu\n", ok, WSAGetLastError(), GetLastError(), bytesTransferred, op->type, op->data.ptr, op->data.u32, op->data.u64);
 
         if (ok) {
             HandleTCP_OP(ioHandler, *op, bytesTransferred);

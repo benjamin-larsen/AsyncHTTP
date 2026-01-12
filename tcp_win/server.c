@@ -57,8 +57,8 @@ DWORD CountLogicalProcessors() {
 void StartServer(const char *addr, uint16_t port) {
     InitWSA();
 
-    __attribute__((__cleanup__(ReleaseShared))) struct shared_retainer ioHandler_retainer = MakeShared(sizeof(struct io_handler), NULL);
     struct io_handler *ioHandler = ioHandler_retainer.descriptor->ptr;
+    __attribute__((__cleanup__(ReleaseShared))) struct shared_retainer ioHandler_retainer = MakeShared(sizeof(struct io_handler), CleanupIOHandler);
 
     *ioHandler = CreateIOHandler();
 
