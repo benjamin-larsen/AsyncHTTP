@@ -74,7 +74,14 @@ void ProcessRead(const struct io_op op, DWORD bytesTransferred) {
     }
 
     conn->common.recvOffset += bytesTransferred;
-    ProcessLines(&conn->common);
+
+    if (!ProcessLines(&conn->common)) {
+        ReleaseShared(&connOPRetainer);
+        return;
+    }
+
+    QueueRead(connOPRetainer);
+}
 
     QueueRead(connOPRetainer);
 }
