@@ -50,14 +50,22 @@ struct shared_retainer RetainShared(struct shared_retainer retainer) {
 
     if (oldRefs == 0) {
         fprintf(stderr, "panic: Shared Pointer attempted to be retained after being reference by none.\n");
+#ifndef SHARED_PTR_GRACEFUL
         abort();
+#else
+        return INVALID_RETAINER;
+#endif
     }
 
     // Must check magic after, since it's possible that another thread set refs to 0.
     // Must secure refs before doing this sanity check.
     if (descriptor->magic != retainer.magic) {
         fprintf(stderr, "panic: Shared Pointer attempted to be retained after being freed or corrupted.\n");
+#ifndef SHARED_PTR_GRACEFUL
         abort();
+#else
+        return INVALID_RETAINER;
+#endif
     }
 
     return (struct shared_retainer){
@@ -70,7 +78,11 @@ struct shared_retainer RetainShared(struct shared_retainer retainer) {
 struct shared_retainer TransferOwnershipShared(struct shared_retainer *retainer) {
     if (retainer == NULL) {
         fprintf(stderr, "panic: attempted to call ReleaseShared on NULL retainer.\n");
+#ifndef SHARED_PTR_GRACEFUL
         abort();
+#else
+        return INVALID_RETAINER;
+#endif
     }
 
     if (retainer->released || retainer->ptr == NULL) {
@@ -92,7 +104,11 @@ struct shared_retainer TransferOwnershipShared(struct shared_retainer *retainer)
 void ReleaseShared(struct shared_retainer *retainer) {
     if (retainer == NULL) {
         fprintf(stderr, "panic: attempted to call ReleaseShared on NULL retainer.\n");
+#ifndef SHARED_PTR_GRACEFUL
         abort();
+#else
+        return;
+#endif
     }
 
     if (retainer->released || retainer->ptr == NULL) {
@@ -107,12 +123,20 @@ void ReleaseShared(struct shared_retainer *retainer) {
 
     if (oldRefs == 0) {
         fprintf(stderr, "panic: Shared Pointer attempted to be released after being reference by none.\n");
+#ifndef SHARED_PTR_GRACEFUL
         abort();
+#else
+        return;
+#endif
     }
 
     if (descriptor->magic != retainer->magic) {
         fprintf(stderr, "panic: Shared Pointer attempted to be released after being freed or corrupted.\n");
+#ifndef SHARED_PTR_GRACEFUL
         abort();
+#else
+        return;
+#endif
     }
 
     retainer->ptr = NULL;
