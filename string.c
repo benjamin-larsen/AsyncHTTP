@@ -48,7 +48,7 @@ uint32_t GetStringLen(union string *str) {
 const union string nullString = { .longStr = { .buf = NULL, .len = 0, .reserved = 0 } };
 
 bool IsEmptyString(union string str) {
-    return str.longStr.len == 0 && str.shortStr.len == 0;
+    return (str.longStr.len == 0 || str.longStr.buf == NULL) && str.shortStr.len == 0;
 }
 
 void FreeString(union string *str) {
@@ -121,27 +121,35 @@ bool SplitString(union string *src, union string *dest, uint8_t delimiter) {
 
     if (bounds == NULL || bounds < buf) return false;
 
-    uint32_t size = (uint8_t*)bounds - (uint8_t*)buf;
+    uint32_t leftSize = (uint8_t*)bounds - (uint8_t*)buf;
+    uint32_t rightSize = len - leftSize - 1;
 
     if (src->shortStr.len > 0) {
-        struct shortString destStr = { .len = size };
-        memcpy(destStr.buf, src->shortStr.buf, size);
+        if (leftSize > 0) {
+            struct shortString destStr = { .len = leftSize };
+            memcpy(destStr.buf, src->shortStr.buf, leftSize);
 
-        dest->shortStr = destStr;
+            dest->shortStr = destStr;
+        } else {
+            *dest = nullString;
+        }
 
-        // 1 to remove the delimiter itself
-        src->shortStr.len = len - size - 1;
-        memmove(
-            src->shortStr.buf,
-            (char *)src->shortStr.buf + size + 1,
-            src->shortStr.len
-        );
+        if (rightSize > 0) {
+            src->shortStr.len = rightSize;
+            memmove(
+                src->shortStr.buf,
+                (uint8_t *)src->shortStr.buf + leftSize + 1,
+                src->shortStr.len
+            );
+        } else {
+            *src = nullString;
+        }
     } else {
-        dest->longStr = (struct longString){ .len = size, .buf = buf };
+        dest->longStr = (struct longString){ .len = leftSize, .buf = buf };
 
         src->longStr = (struct longString){
-            .len = len - size - 1,
-            .buf = (char *)buf + size + 1
+            .len = rightSize,
+            .buf = (uint8_t *)buf + leftSize + 1
         };
     }
 
