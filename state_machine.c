@@ -95,9 +95,11 @@ void RunAsync(struct async_state *machineState) {
     RunAsync(awaiting);
 }
 
-void StartAsync(struct async_state *machineState, void *constructParam) {
-    if (machineState == NULL) return;
-    if (!IsValidDescriptor(machineState->descriptor)) return;
+void AwaitAsync(struct async_descriptor descriptor, void *constructParam) {
+    if (!IsValidDescriptor(descriptor)) return;
+
+    struct async_state *machineState = calloc(1, sizeof(struct async_state));
+    machineState->descriptor = descriptor;
 
     if (currentAsync != NULL) {
         machineState->awaiting = currentAsync;
@@ -106,11 +108,4 @@ void StartAsync(struct async_state *machineState, void *constructParam) {
     machineState->state = machineState->descriptor.constructor(constructParam);
 
     RunAsync(machineState);
-}
-
-void AwaitAsync(struct async_descriptor descriptor, void *constructParam) {
-    struct async_state *machineState = calloc(1, sizeof(struct async_state));
-    machineState->descriptor = descriptor;
-
-    StartAsync(machineState, constructParam);
 }

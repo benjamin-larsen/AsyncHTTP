@@ -7,34 +7,35 @@
 // Local External
 #include "../io.h"
 #include "../safe_pointer.c"
+#include "../atomics.c"
 
 // Local Internal
-#include "./consts.h"
+#include "../tcp_common/consts.h"
 #include "./conn.c"
+#include "./io_async.c"
 
-void HandleTCP_OP(const struct io_handler *ioHandler, const struct io_op op, DWORD bytesTransferred) {
+void HandleTCP_OP(const struct io_handler *ioHandler, const struct io_op op, bool ok, DWORD bytesTransferred) {
     switch (op.type) {
-        case IO_STARTCLIENT:
-            return StartClient(ioHandler, (SOCKET)op.data.ptr);
-        case IO_READ:
-            return ProcessRead(op, bytesTransferred);
-        case IO_WRITE:
-            return ProcessWrite(op, bytesTransferred);
-        default:
-            printf("error: Unknown Operation Type %i (processor)\n", op.type);
-    }
-}
+        case IO_STARTCLIENT: {
+            struct connSetupParams params = {
+                .io_handler = ioHandler,
+                .sock = (SOCKET)op.data.ptr
+            };
+            AwaitAsync(connAsync, &params);
+            break;
+        }
+        case IO_SUBROUTINE: {
+            struct async_state *asyncState = op.data.ptr;
+            struct io_async_state *ioAsyncState = asyncState->state;
 
-void HandleTCP_OPErr(const struct io_handler *ioHandler, const struct io_op op) {
-    switch (op.type) {
-        case IO_READ:
-        case IO_WRITE: {
-            struct shared_retainer retainer = RetainerFromShared(op.data.ptr);
-            ReleaseShared(&retainer);
-            return;
+            ioAsyncState->ok = ok;
+            ioAsyncState->bytesTransferred = bytesTransferred;
+
+            RunAsync(asyncState);
+            break;
         }
         default:
-            printf("error: Unknown Operation Type %i (error handler)\n", op.type);
+            printf("error: Unknown Operation Type %i (processor)\n", op.type);
     }
 }
 
@@ -65,11 +66,7 @@ DWORD StartWorker(void *param) {
             abort();
         }
 
-        if (ok) {
-            HandleTCP_OP(ioHandler, *op, bytesTransferred);
-        } else {
-            HandleTCP_OPErr(ioHandler, *op);
-        }
+        HandleTCP_OP(ioHandler, *op, ok, bytesTransferred);
 
         free(op);
     }
