@@ -71,6 +71,8 @@ void TrimChar(union string *line, uint8_t c) {
             line->shortStr.len -= 1;
         }
     } else {
+        if (line->longStr.len == 0) return;
+        
         if (line->longStr.buf[line->longStr.len - 1] == c) {
             line->longStr.len -= 1;
         }
