@@ -84,6 +84,18 @@ void TrimLine(union string *line) {
     TrimChar(line, '\r');
 }
 
+void CommitRead(struct tcpConnCommon* conn, uint32_t n) {
+    uint32_t remaining = n >= conn->recvOffset ? 0 : conn->recvOffset - n;
+
+    if (remaining == 0) {
+        conn->recvOffset = 0;
+        return;
+    }
+
+    memmove(conn->recvBuf, (uint8_t *)conn->recvBuf + n, remaining);
+    conn->recvOffset = remaining;
+}
+
 // Returns whether process lines was succesful
 bool ProcessLines(struct tcpConnCommon* conn) {
     union string line;
@@ -114,22 +126,15 @@ bool ProcessLines(struct tcpConnCommon* conn) {
                 // check if actually expecting body
                 conn->state = RECV_BODY;
                 printf("Request Done\n");
-                break;
+                CommitRead(conn, offset);
+                return true;
             } else {
                 printf("Header Line: %.*s\n", GetStringLen(&line), GetStringBuf(&line));
             }
         }
     }
 
-    uint32_t remaining = conn->recvOffset - offset;
-
-    if (remaining == 0) {
-        conn->recvOffset = 0;
-        return true;
-    }
-
-    memmove(conn->recvBuf, (uint8_t *)conn->recvBuf + offset, remaining);
-    conn->recvOffset = remaining;
+    CommitRead(conn, offset);
 
     return true;
 }
