@@ -8,6 +8,7 @@
 // Local External
 #include "../safe_pointer.c"
 #include "../io.h"
+#include "../state_machine.c"
 
 // // Local Internal
 #include "./event_loop.c"
@@ -126,7 +127,18 @@ void StartServer(const char *addr, uint16_t port) {
             continue;
         }
 
-        struct io_op *op = CreateIOOperation(IO_STARTCLIENT, (void *)client);
+        struct connSetupParams params = {
+            .io_handler = ioHandler,
+            .sock = client
+        };
+
+        struct async_state *connState = AwaitAsync(connAsync, &params);
+
+        if (connState == NULL) continue;
+
+        connState->flags |= MACHINE_SUSPENDED_IO;
+
+        struct io_op *op = CreateIOOperation(0, connState);
         ResolveIOOperation(ioHandler, op);
     }
 }

@@ -14,31 +14,6 @@
 #include "./conn.c"
 #include "./io_async.c"
 
-void HandleTCP_OP(const struct io_handler *ioHandler, const struct io_op op, bool ok, DWORD bytesTransferred) {
-    switch (op.type) {
-        case IO_STARTCLIENT: {
-            struct connSetupParams params = {
-                .io_handler = ioHandler,
-                .sock = (SOCKET)op.data
-            };
-            AwaitAsync(connAsync, &params);
-            break;
-        }
-        case IO_SUBROUTINE: {
-            struct async_state *asyncState = op.data;
-            struct io_async_state *ioAsyncState = asyncState->state;
-
-            ioAsyncState->ok = ok;
-            ioAsyncState->bytesTransferred = bytesTransferred;
-
-            RunAsync(asyncState);
-            break;
-        }
-        default:
-            printf("error: Unknown Operation Type %i (processor)\n", op.type);
-    }
-}
-
 DWORD StartWorker(void *param) {
     struct shared_ptr *ptr = param;
     __attribute__((__cleanup__(ReleaseShared))) struct shared_retainer ioHandler_retainer = RetainerFromShared(ptr);
@@ -66,7 +41,15 @@ DWORD StartWorker(void *param) {
             abort();
         }
 
-        HandleTCP_OP(ioHandler, *op, ok, bytesTransferred);
+        {
+            struct async_state *asyncState = op->data;
+            struct io_async_state *ioAsyncState = asyncState->state;
+
+            ioAsyncState->ok = ok;
+            ioAsyncState->bytesTransferred = bytesTransferred;
+
+            ResumeFromIO(asyncState);
+        }
 
         free(op);
     }

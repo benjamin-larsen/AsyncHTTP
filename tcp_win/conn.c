@@ -59,9 +59,9 @@ void connDestructor(struct connState *state) {
     printf("Conn Destroy\n");
 }
 
-bool connSubroutine(struct connState *state) {
+struct subroutine_result connSubroutine(struct connState *state) {
     // Verify Current Async is "this"
-    if (currentAsync == NULL || currentAsync->state != state) return true;
+    if (currentAsync == NULL || currentAsync->state != state) return subroutine_finish;
 
     StageSwitch:
     switch (state->stage) {
@@ -71,14 +71,14 @@ bool connSubroutine(struct connState *state) {
 
             if (err == SOCKET_ERROR) {
                 fprintf(stderr, "error: Failed to mark Connection as Non-Blocking: %i\n", WSAGetLastError());
-                return true;
+                return subroutine_finish;
             }
 
             HANDLE ioPort = w32_CreateIOPort(state->io_handler, (HANDLE)state->sock);
 
             if (ioPort != state->io_handler->iocp_handle) {
                 fprintf(stderr, "error: Connection IOCP Port is invalid.\n");
-                return true;
+                return subroutine_finish;
             }
 
             state->stage = ConnRead;
@@ -94,7 +94,9 @@ bool connSubroutine(struct connState *state) {
                 .buf = (uint8_t *)state->common.recvBuf + state->common.recvOffset,
             };
 
-            struct io_op *op = CreateIOOperation(IO_SUBROUTINE, currentAsync);
+            PrepareIO();
+
+            struct io_op *op = CreateIOOperation(0, currentAsync);
 
             int err = WSARecv(
                 state->sock,
@@ -112,23 +114,24 @@ bool connSubroutine(struct connState *state) {
                 if (wsaErr != WSA_IO_PENDING) {
                     printf("Instant Read Error: %i\n", wsaErr);
                     free(op);
+                    CancelIO();
 
-                    return true;
+                    return subroutine_finish;
                 }
             }
 
-            return false;
+            return subroutine_yield_io;
         }
 
         case ConnProcess: {
             if (
                 !state->io_state.ok ||
                 state->io_state.bytesTransferred == 0
-            ) return true;
+            ) return subroutine_finish;
 
             state->common.recvOffset += state->io_state.bytesTransferred;
 
-            if (!ProcessLines(&state->common)) return true;
+            if (!ProcessLines(&state->common)) return subroutine_finish;
 
             state->stage = ConnRead;
             goto StageSwitch;
@@ -136,7 +139,7 @@ bool connSubroutine(struct connState *state) {
 
         default: {
             printf("Unknown Stage\n");
-            return true;
+            return subroutine_finish;
         }
     }
 }
