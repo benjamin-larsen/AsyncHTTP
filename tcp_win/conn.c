@@ -94,7 +94,7 @@ bool connSubroutine(struct connState *state) {
                 .buf = (uint8_t *)state->common.recvBuf + state->common.recvOffset,
             };
 
-            struct io_op *op = CreateIOOperation(IO_SUBROUTINE, (union op_data){ .ptr = currentAsync });
+            struct io_op *op = CreateIOOperation(IO_SUBROUTINE, currentAsync);
 
             int err = WSARecv(
                 state->sock,

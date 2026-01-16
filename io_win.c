@@ -21,18 +21,11 @@ void CleanupIOHandler(void *ioHandler) {
     CloseIOHandler(ioHandler);
 }
 
-// TODO: Make Global, not OS-specific
-union op_data {
-    void *ptr;
-    uint32_t u32;
-    uint64_t u64;
-};
-
 struct io_op {
     OVERLAPPED overlapped;
     uint32_t magic;
     uint32_t type;
-    union op_data data;
+    void *data;
 };
 
 struct io_handler CreateIOHandler() {
@@ -54,7 +47,7 @@ bool IsValidIOHandler(const struct io_handler *ioHandler) {
     return ioHandler->iocp_handle != NULL;
 }
 
-struct io_op *CreateIOOperation(uint32_t type, union op_data data) {
+struct io_op *CreateIOOperation(uint32_t type, void *data) {
     struct io_op *op = calloc(1, sizeof(struct io_op));
     op->magic = IOOperationMagic;
     op->type = type;

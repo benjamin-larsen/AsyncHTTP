@@ -19,13 +19,13 @@ void HandleTCP_OP(const struct io_handler *ioHandler, const struct io_op op, boo
         case IO_STARTCLIENT: {
             struct connSetupParams params = {
                 .io_handler = ioHandler,
-                .sock = (SOCKET)op.data.ptr
+                .sock = (SOCKET)op.data
             };
             AwaitAsync(connAsync, &params);
             break;
         }
         case IO_SUBROUTINE: {
-            struct async_state *asyncState = op.data.ptr;
+            struct async_state *asyncState = op.data;
             struct io_async_state *ioAsyncState = asyncState->state;
 
             ioAsyncState->ok = ok;

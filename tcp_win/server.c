@@ -126,9 +126,7 @@ void StartServer(const char *addr, uint16_t port) {
             continue;
         }
 
-        struct io_op *op = CreateIOOperation(IO_STARTCLIENT, (union op_data){
-            .ptr = (void *)client
-        });
+        struct io_op *op = CreateIOOperation(IO_STARTCLIENT, (void *)client);
         ResolveIOOperation(ioHandler, op);
     }
 }
